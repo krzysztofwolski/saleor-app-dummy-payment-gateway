@@ -2,7 +2,12 @@ import { createManifestHandler } from "@saleor/app-sdk/handlers/next";
 import { AppManifest } from "@saleor/app-sdk/types";
 
 import packageJson from "../../../package.json";
-import { orderCreatedWebhook } from "./webhooks/order-created";
+import { initializeSessionWebhook } from "./webhooks/initialize-session";
+import { transactionCancelationRequestedWebhook } from "./webhooks/transaction-cancelation-requested";
+import { transactionChargeRequestedWebhook } from "./webhooks/transaction-charge-requested";
+import { transactionInitializeSessionWebhook } from "./webhooks/transaction-initialize";
+import { transactionProcessSessionWebhook } from "./webhooks/transaction-process";
+import { transactionRefundRequestedWebhook } from "./webhooks/transaction-refund-requested";
 
 /**
  * App SDK helps with the valid Saleor App Manifest creation. Read more:
@@ -10,50 +15,32 @@ import { orderCreatedWebhook } from "./webhooks/order-created";
  */
 export default createManifestHandler({
   async manifestFactory({ appBaseUrl, request }) {
-    /**
-     * Allow to overwrite default app base url, to enable Docker support.
-     *
-     * See docs: https://docs.saleor.io/docs/3.x/developer/extending/apps/local-app-development
-     */
     const iframeBaseUrl = process.env.APP_IFRAME_BASE_URL ?? appBaseUrl;
-    const apiBaseURL = process.env.APP_API_BASE_URL ?? appBaseUrl;
+    const apiBaseUrl = process.env.APP_API_BASE_URL ?? appBaseUrl;
+
+    const tokenTargetUrl = new URL("api/register", apiBaseUrl).href;
+    const logoUrl = new URL("logo.png", apiBaseUrl).href;
 
     const manifest: AppManifest = {
-      name: 'Saleor App Template',
-      tokenTargetUrl: `${apiBaseURL}/api/register`,
+      name: "Dummy Payments",
+      tokenTargetUrl,
       appUrl: iframeBaseUrl,
-      /**
-       * Set permissions for app if needed
-       * https://docs.saleor.io/docs/3.x/developer/permissions
-       */
-      permissions: [
-        /**
-         * Add permission to allow "ORDER_CREATED" webhook registration.
-         *
-         * This can be removed
-         */
-        "MANAGE_ORDERS",
-      ],
-      id: "saleor.app",
+      permissions: ["HANDLE_PAYMENTS", "HANDLE_CHECKOUTS", "MANAGE_ORDERS", "MANAGE_USERS"],
+      id: "saleor.app.dummy-payments-app",
       version: packageJson.version,
-      /**
-       * Configure webhooks here. They will be created in Saleor during installation
-       * Read more
-       * https://docs.saleor.io/docs/3.x/developer/api-reference/webhooks/objects/webhook
-       *
-       * Easiest way to create webhook is to use app-sdk
-       * https://github.com/saleor/saleor-app-sdk/blob/main/docs/saleor-webhook.md
-       */
-      webhooks: [orderCreatedWebhook.getWebhookManifest(apiBaseURL)],
-      /**
-       * Optionally, extend Dashboard with custom UIs
-       * https://docs.saleor.io/docs/3.x/developer/extending/apps/extending-dashboard-with-apps
-       */
+      webhooks: [
+        initializeSessionWebhook.getWebhookManifest(apiBaseUrl),
+        transactionCancelationRequestedWebhook.getWebhookManifest(apiBaseUrl),
+        transactionChargeRequestedWebhook.getWebhookManifest(apiBaseUrl),
+        transactionInitializeSessionWebhook.getWebhookManifest(apiBaseUrl),
+        transactionProcessSessionWebhook.getWebhookManifest(apiBaseUrl),
+        transactionRefundRequestedWebhook.getWebhookManifest(apiBaseUrl),
+      ],
       extensions: [],
       author: "Saleor Commerce",
       brand: {
         logo: {
-          default: `${apiBaseURL}/logo.png`,
+          default: logoUrl,
         },
       },
     };

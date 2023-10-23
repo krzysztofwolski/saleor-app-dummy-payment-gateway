@@ -1,22 +1,49 @@
 import { gql } from "urql";
-import { SaleorAsyncWebhook } from "@saleor/app-sdk/handlers/next";
-import { OrderCreatedWebhookPayloadFragment } from "../../../../generated/graphql";
+import { SaleorSyncWebhook } from "@saleor/app-sdk/handlers/next";
 import { saleorApp } from "../../../saleor-app";
-import { createClient } from "../../../lib/create-graphq-client";
+import { createClient } from "../../../lib/create-graphql-client";
+import { TransactionProcessSessionEventPayloadFragment } from "../../../../generated/graphql";
 
 /**
  * Example payload of the webhook. It will be transformed with graphql-codegen to Typescript type: OrderCreatedWebhookPayloadFragment
  */
-const OrderCreatedWebhookPayload = gql`
-  fragment OrderCreatedWebhookPayload on OrderCreated {
-    order {
-      userEmail
-      id
-      number
-      user {
-        email
-        firstName
-        lastName
+const TransactionProcessSessionEventPayload = gql`
+  fragment TransactionProcessSessionEventPayload on TransactionProcessSession {
+    __typename
+    data
+    issuingPrincipal {
+      ... on Node {
+        id
+      }
+    }
+    sourceObject {
+      __typename
+      ... on Checkout {
+        id
+        channel {
+          id
+          slug
+        }
+        languageCode
+        total: totalPrice {
+          gross {
+            amount
+          }
+        }
+      }
+      ... on Order {
+        id
+        channel {
+          id
+          slug
+        }
+        languageCodeEnum
+        userEmail
+        total {
+          gross {
+            amount
+          }
+        }
       }
     }
   }
@@ -26,12 +53,12 @@ const OrderCreatedWebhookPayload = gql`
  * Top-level webhook subscription query, that will be attached to the Manifest.
  * Saleor will use it to register webhook.
  */
-const OrderCreatedGraphqlSubscription = gql`
+const TransactionProcessSessionSubscription = gql`
   # Payload fragment must be included in the root query
-  ${OrderCreatedWebhookPayload}
-  subscription OrderCreated {
+  ${TransactionProcessSessionEventPayload}
+  subscription TransactionProcessSession {
     event {
-      ...OrderCreatedWebhookPayload
+      ...TransactionProcessSessionEventPayload
     }
   }
 `;
@@ -41,18 +68,18 @@ const OrderCreatedGraphqlSubscription = gql`
  *
  * orderCreatedWebhook.getWebhookManifest() must be called in api/manifest too!
  */
-export const orderCreatedWebhook = new SaleorAsyncWebhook<OrderCreatedWebhookPayloadFragment>({
-  name: "Order Created in Saleor",
-  webhookPath: "api/webhooks/order-created",
-  event: "ORDER_CREATED",
-  apl: saleorApp.apl,
-  query: OrderCreatedGraphqlSubscription,
-});
+export const transactionProcessSessionWebhook =
+  new SaleorSyncWebhook<TransactionProcessSessionEventPayloadFragment>({
+    webhookPath: "api/webhooks/transaction-process",
+    event: "TRANSACTION_PROCESS_SESSION",
+    apl: saleorApp.apl,
+    query: TransactionProcessSessionSubscription,
+  });
 
 /**
  * Export decorated Next.js handler, which adds extra context
  */
-export default orderCreatedWebhook.createHandler((req, res, ctx) => {
+export default transactionProcessSessionWebhook.createHandler((req, res, ctx) => {
   const {
     /**
      * Access payload from Saleor - defined above
@@ -72,21 +99,18 @@ export default orderCreatedWebhook.createHandler((req, res, ctx) => {
     authData,
   } = ctx;
 
-  /**
-   * Perform logic based on Saleor Event payload
-   */
-  console.log(`Order was created for customer: ${payload.order?.userEmail}`);
+  console.log("TRANSACTION PROCESS");
 
   /**
    * Create GraphQL client to interact with Saleor API.
    */
   const client = createClient(authData.saleorApiUrl, async () => ({ token: authData.token }));
-  
+
   /**
    * Now you can fetch additional data using urql.
    * https://formidable.com/open-source/urql/docs/api/core/#clientquery
    */
-  
+
   // const data = await client.query().toPromise()
 
   /**
